@@ -37,6 +37,7 @@ public:
     Q_INVOKABLE void acceptDownload();
     Q_INVOKABLE void rejectDownload();
     Q_INVOKABLE void cancelDownload(const QString &path);
+    Q_INVOKABLE QString deleteDownload(const QString &path);
     Q_INVOKABLE void openFolder(const QString &path = {});
 signals:
     void changed();

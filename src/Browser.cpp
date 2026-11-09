@@ -12,6 +12,8 @@
 #include <QLocale>
 #include <QDebug>
 #include <QSet>
+#include <QFile>
+#include <algorithm>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QNetworkAccessManager>
@@ -480,6 +482,29 @@ void Browser::cancelDownload(const QString &path)
 {
     for (const auto &job : d->jobs)
         if (job.path == path && job.operation) job.operation->Cancel();
+}
+
+QString Browser::deleteDownload(const QString &path)
+{
+    if (!Policy::isManagedDownloadPath(downloadFolder(), path))
+        return "Quby can only delete files in its managed download queue.";
+    const auto job = std::find_if(d->jobs.begin(), d->jobs.end(),
+                                  [&path](const auto &entry) { return entry.path == path; });
+    if (job != d->jobs.end() && (job->operation || job->preparingPreview))
+        return "Wait for the download and its preview to finish.";
+    if (QFile::exists(path) && !QFile::moveToTrash(path))
+        return "Could not move the download to the Recycle Bin.";
+
+    QString message = "Download removed.";
+    const QFileInfo preview(FabPreview::pathFor(path));
+    if (preview.isFile() && !preview.isSymLink() && !QFile::moveToTrash(preview.absoluteFilePath()))
+        message = "Download removed. Its cached preview could not be moved to the Recycle Bin.";
+    if (job != d->jobs.end())
+        d->jobs.erase(job);
+    const auto folder = QFileInfo(path).absolutePath();
+    QDir().rmdir(folder); // Only remove an empty job folder.
+    emit downloadsChanged();
+    return message;
 }
 
 void Browser::openFolder(const QString &path)

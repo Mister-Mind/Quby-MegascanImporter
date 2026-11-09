@@ -33,6 +33,19 @@ bool Policy::supportedDownload(const QString &name)
     return extensions.contains(QFileInfo(name).suffix().toLower());
 }
 
+bool Policy::isManagedDownloadPath(const QString &root, const QString &path)
+{
+    const QFileInfo file(path);
+    const QFileInfo jobFolder(file.absolutePath());
+    const auto canonicalRoot = QFileInfo(root).canonicalFilePath();
+    return file.isAbsolute() && !file.isSymLink() && !jobFolder.isSymLink() &&
+           !canonicalRoot.isEmpty() && jobFolder.dir().canonicalPath() == canonicalRoot &&
+           jobFolder.canonicalFilePath() == QDir(canonicalRoot).filePath(jobFolder.fileName()) &&
+           !QUuid::fromString(jobFolder.fileName()).isNull() &&
+           !file.fileName().startsWith(".foundry-preview-", Qt::CaseInsensitive) &&
+           supportedDownload(file.fileName()) && (!file.exists() || file.isFile());
+}
+
 QString Policy::allocatePath(const QString &directory, const QString &name, QString *error)
 {
     const QString safe = safeFileName(name);

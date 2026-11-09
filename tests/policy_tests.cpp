@@ -40,6 +40,21 @@ private slots:
         QVERIFY(QFileInfo(QFileInfo(a).absolutePath()).isDir());
         QVERIFY(Policy::allocatePath(dir.path(), "bad.exe", &error).isEmpty());
     }
+    void deletionIsLimitedToManagedDownloadFiles() {
+        QTemporaryDir dir;
+        const auto root = dir.filePath("Downloads");
+        QString error;
+        const auto download = Policy::allocatePath(root, "rock.zip", &error);
+        QVERIFY2(!download.isEmpty(), qPrintable(error));
+        QFile file(download);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.close();
+        QVERIFY(Policy::isManagedDownloadPath(root, download));
+        QVERIFY(!Policy::isManagedDownloadPath(root, dir.filePath("rock.zip")));
+        QVERIFY(!Policy::isManagedDownloadPath(root, root + "/rock.zip"));
+        QVERIFY(!Policy::isManagedDownloadPath(root, QFileInfo(download).dir().filePath(".foundry-preview-rock.zip.jpg")));
+        QVERIFY(!Policy::isManagedDownloadPath(root, QFileInfo(download).dir().filePath("rock.blend")));
+    }
 };
 QTEST_GUILESS_MAIN(PolicyTests)
 #include "policy_tests.moc"

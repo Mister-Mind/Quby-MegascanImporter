@@ -26,6 +26,7 @@ ApplicationWindow {
     property bool browserRequested: false
     property string exportSource: ""
     property string deletePath: ""
+    property string downloadMessage: ""
     onClosing: function(close) {
         if (assetLibrary.busy)
             close.accepted = false
@@ -72,6 +73,22 @@ ApplicationWindow {
         contentItem: Label {
             wrapMode: Text.WordWrap
             text: "Move the exported Blender file to the Recycle Bin."
+        }
+    }
+    Dialog {
+        id: deleteDownloadDialog
+        property string downloadPath: ""
+        property string downloadName: ""
+        title: "Delete download?"
+        anchors.centerIn: parent
+        width: Math.min(400, app.width - 40)
+        modal: true
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        onAccepted: app.downloadMessage = browser.deleteDownload(downloadPath)
+        contentItem: Label {
+            wrapMode: Text.WordWrap
+            textFormat: Text.PlainText
+            text: "Move " + deleteDownloadDialog.downloadName + " to the Recycle Bin. Exported Blender assets stay in the library."
         }
     }
     Component.onCompleted: {
@@ -262,7 +279,7 @@ ApplicationWindow {
                         Item { Layout.fillWidth: true }
                         ToolButton { text: "Open folder"; onClicked: browser.openFolder("") }
                     }
-                    Caption { text: "Downloaded asset files." }
+                    Caption { text: app.downloadMessage || "Downloaded asset files."; Layout.fillWidth: true; wrapMode: Text.WordWrap }
                     Divider {}
                     Label {
                         visible: browser.downloads.length === 0
@@ -306,6 +323,16 @@ ApplicationWindow {
                                     enabled: !assetLibrary.busy
                                     text: "Export to Blender"
                                     onClicked: app.prepareExport(modelData.path)
+                                }
+                                ToolButton {
+                                    visible: !modelData.active
+                                    enabled: !assetLibrary.busy && modelData.state !== "Preparing preview"
+                                    text: "Delete"
+                                    onClicked: {
+                                        deleteDownloadDialog.downloadPath = modelData.path
+                                        deleteDownloadDialog.downloadName = modelData.name
+                                        deleteDownloadDialog.open()
+                                    }
                                 }
                             }
                         }
