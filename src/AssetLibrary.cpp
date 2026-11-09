@@ -8,6 +8,7 @@
 #include <QFileInfo>
 #include <QRegularExpression>
 #include <QStandardPaths>
+#include <QTimer>
 #include <QUrl>
 
 namespace {
@@ -34,21 +35,19 @@ AssetLibrary::AssetLibrary(QObject *parent) : QObject(parent)
             if (line.startsWith("FOUNDRY_ERROR ")) failure = line.mid(14).trimmed();
         }
         if (exit == QProcess::NormalExit && code == 0 && !success.isEmpty())
-            message = "Exported to " + success + ". Refresh the Asset Browser in Blender.";
+            finishExport(success, {});
         else
-            message = failure.isEmpty() ? "Blender could not finish the export." : failure;
-        emit changed();
+            finishExport({}, failure.isEmpty() ? "Blender could not finish the export." : failure);
     });
     connect(&worker, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
-        if (error == QProcess::FailedToStart) {
-            message = "Could not start Blender.";
-            emit changed();
-        }
+        if (error == QProcess::FailedToStart)
+            finishExport({}, "Could not start Blender.");
     });
 }
 
-bool AssetLibrary::busy() const { return worker.state() != QProcess::NotRunning; }
+bool AssetLibrary::busy() const { return totalExports > 0; }
 QString AssetLibrary::status() const { return message; }
+QStringList AssetLibrary::exportErrors() const { return errors; }
 QString AssetLibrary::folder() const
 {
     return QDir(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation))
@@ -69,24 +68,74 @@ QVariantList AssetLibrary::assets() const
 
 void AssetLibrary::exportAsset(const QString &source)
 {
+    exportAssets({source});
+}
+
+void AssetLibrary::exportAssets(const QStringList &sources)
+{
     if (busy()) return;
+    errors.clear();
+    pendingExports = sources;
+    pendingExports.removeAll(QString());
+    pendingExports.removeDuplicates();
+    if (pendingExports.isEmpty()) return;
     const QDir app(QCoreApplication::applicationDirPath());
-    const QString script = app.filePath("blender/export_asset.py");
-    QString blender = QStandardPaths::findExecutable("blender.exe");
+    exporterScript = app.filePath("blender/export_asset.py");
+    blenderExecutable = QStandardPaths::findExecutable("blender.exe");
     const QString installed = "C:/Program Files/Blender Foundation/Blender 5.2/blender.exe";
-    if (QFileInfo::exists(installed)) blender = installed;
-    if (blender.isEmpty() || !QFileInfo::exists(script) || !QFileInfo(source).isFile()) {
-        message = "Export needs Blender 5.2, the Quby export scripts, and a local asset file.";
+    if (QFileInfo::exists(installed)) blenderExecutable = installed;
+    if (blenderExecutable.isEmpty() || !QFileInfo::exists(exporterScript)) {
+        pendingExports.clear();
+        message = "Export needs Blender 5.2 and the Quby export scripts.";
         emit changed();
         return;
     }
+    totalExports = pendingExports.size();
+    succeeded = 0;
+    startNextExport();
+}
+
+void AssetLibrary::startNextExport()
+{
+    currentSource = pendingExports.takeFirst();
+    const QFileInfo source(currentSource);
+    if (!source.isFile()) {
+        finishExport({}, "Source file is missing.");
+        return;
+    }
     QStringList args{"--background", "--disable-autoexec", "--python-exit-code", "1",
-                     "--python", script, "--", QFileInfo(source).absoluteFilePath(), folder()};
-    const auto preview = FabPreview::pathFor(source);
+                     "--python", exporterScript, "--", source.absoluteFilePath(), folder()};
+    const auto preview = FabPreview::pathFor(currentSource);
     if (QFileInfo(preview).isFile()) args << "--preview" << QFileInfo(preview).absoluteFilePath();
     logTail.clear();
-    message = "Exporting asset and preparing its Blender thumbnail…";
-    worker.start(blender, args);
+    message = QString("Exporting %1 of %2 · %3")
+                  .arg(totalExports - pendingExports.size()).arg(totalExports).arg(source.fileName());
+    worker.start(blenderExecutable, args);
+    emit changed();
+}
+
+void AssetLibrary::finishExport(const QString &success, const QString &error)
+{
+    if (currentSource.isEmpty()) return;
+    if (error.isEmpty())
+        ++succeeded;
+    else
+        errors.append(QFileInfo(currentSource).fileName() + ": " + error);
+    currentSource.clear();
+    if (!pendingExports.isEmpty()) {
+        QTimer::singleShot(0, this, &AssetLibrary::startNextExport);
+        return;
+    }
+    if (totalExports == 1) {
+        message = error.isEmpty() ? "Exported to " + success + ". Refresh the Asset Browser in Blender." : error;
+    } else {
+        message = QString("Exported %1 of %2 assets.").arg(succeeded).arg(totalExports);
+        if (!errors.isEmpty())
+            message += QString(" %1 failed.").arg(errors.size());
+        if (succeeded)
+            message += " Refresh the Asset Browser in Blender.";
+    }
+    totalExports = 0;
     emit changed();
 }
 

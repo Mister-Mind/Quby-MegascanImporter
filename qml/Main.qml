@@ -24,7 +24,10 @@ ApplicationWindow {
     readonly property color brass: "#d6b465"
     property int page: 0
     property bool browserRequested: false
-    property string exportSource: ""
+    property var exportSources: []
+    property var selectedDownloads: []
+    readonly property var readyDownloads: browser.downloads.filter(row => row.state === "Saved").map(row => row.path)
+    readonly property var selectedReady: readyDownloads.filter(path => selectedDownloads.includes(path))
     property string deletePath: ""
     property string downloadMessage: ""
     onClosing: function(close) {
@@ -39,8 +42,13 @@ ApplicationWindow {
         onAccepted: app.prepareExport(selectedFile)
     }
     function prepareExport(file) {
-        exportSource = assetLibrary.localPath(file)
+        exportSources = [assetLibrary.localPath(file)]
         exportDialog.open()
+    }
+    function toggleDownload(path, checked) {
+        selectedDownloads = checked
+                ? selectedDownloads.concat([path])
+                : selectedDownloads.filter(item => item !== path)
     }
     Dialog {
         id: exportDialog
@@ -51,14 +59,34 @@ ApplicationWindow {
         standardButtons: Dialog.Ok | Dialog.Cancel
         onAccepted: {
             app.page = 3
-            assetLibrary.exportAsset(app.exportSource)
+            assetLibrary.exportAssets(app.exportSources)
+            app.selectedDownloads = app.selectedDownloads.filter(path => !app.exportSources.includes(path))
         }
         contentItem: ColumnLayout {
             spacing: 12
             Label {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
-                text: "Export to the Megascans library. Quby uses the saved Fab preview when available or prepares a thumbnail in Blender."
+                text: (app.exportSources.length === 1 ? "Export 1 asset" : "Export " + app.exportSources.length + " assets")
+                    + " to the Megascans library. Quby uses saved Fab previews when available."
+            }
+        }
+    }
+    Dialog {
+        id: exportErrorsDialog
+        title: "Export errors"
+        anchors.centerIn: parent
+        width: Math.min(550, app.width - 40)
+        height: Math.min(360, app.height - 40)
+        modal: true
+        standardButtons: Dialog.Close
+        contentItem: ScrollView {
+            TextArea {
+                readOnly: true
+                selectByMouse: true
+                wrapMode: TextEdit.Wrap
+                textFormat: TextEdit.PlainText
+                text: assetLibrary.exportErrors.join("\n\n")
             }
         }
     }
@@ -277,6 +305,22 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         Headline { text: "Downloads" }
                         Item { Layout.fillWidth: true }
+                        ToolButton {
+                            text: app.selectedReady.length > 0 && app.selectedReady.length === app.readyDownloads.length
+                                  ? "Clear selection" : "Select all"
+                            enabled: !assetLibrary.busy && app.readyDownloads.length > 0
+                            onClicked: app.selectedDownloads = app.selectedReady.length === app.readyDownloads.length
+                                       ? [] : app.readyDownloads.slice()
+                        }
+                        ToolButton {
+                            text: app.selectedReady.length ? "Export selected (" + app.selectedReady.length + ")" : "Export selected"
+                            accent: true
+                            enabled: !assetLibrary.busy && app.selectedReady.length > 0
+                            onClicked: {
+                                app.exportSources = app.selectedReady.slice()
+                                exportDialog.open()
+                            }
+                        }
                         ToolButton { text: "Open folder"; onClicked: browser.openFolder("") }
                     }
                     Caption { text: app.downloadMessage || "Downloaded asset files."; Layout.fillWidth: true; wrapMode: Text.WordWrap }
@@ -308,6 +352,13 @@ ApplicationWindow {
                             RowLayout {
                                 anchors.fill: parent
                                 anchors.margins: 11
+                                CheckBox {
+                                    visible: modelData.state === "Saved"
+                                    enabled: !assetLibrary.busy
+                                    checked: app.selectedDownloads.includes(modelData.path)
+                                    Accessible.name: "Select " + modelData.name
+                                    onToggled: app.toggleDownload(modelData.path, checked)
+                                }
                                 ColumnLayout {
                                     Layout.fillWidth: true
                                     Label { Layout.fillWidth: true; text: modelData.name; color: app.ink; elide: Text.ElideMiddle }
@@ -359,6 +410,11 @@ ApplicationWindow {
                         textFormat: Text.PlainText
                     }
                     ProgressBar { visible: assetLibrary.busy; indeterminate: true; Layout.fillWidth: true }
+                    ToolButton {
+                        visible: !assetLibrary.busy && assetLibrary.exportErrors.length > 0
+                        text: "Show export errors"
+                        onClicked: exportErrorsDialog.open()
+                    }
                     ListView {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
