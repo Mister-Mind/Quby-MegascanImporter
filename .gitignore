@@ -1,0 +1,10 @@
+build*/
+CMakeUserPresets.json
+__pycache__/
+*.py[cod]
+*.blend
+*.blend1
+*.exe
+*.dll
+*.zip
+.vs/
