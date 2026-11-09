@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(QubyMegascanImporter VERSION 0.2.0 LANGUAGES CXX)
+project(QubyMegascanImporter VERSION 0.2.0 LANGUAGES CXX RC)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_compile_options($<$<CXX_COMPILER_ID:MSVC>:/utf-8>)
@@ -20,7 +20,7 @@ if(NOT EXISTS "${WEBVIEW2_NATIVE}/include/WebView2.h")
     message(FATAL_ERROR "Set WEBVIEW2_SDK to the unpacked Microsoft.Web.WebView2 package.")
 endif()
 qt_add_executable(QubyMegascanImporter WIN32 src/main.cpp src/Browser.cpp src/Browser.h src/Policy.cpp
-    src/AssetLibrary.cpp src/AssetLibrary.h src/FabPreview.cpp)
+    src/AssetLibrary.cpp src/AssetLibrary.h src/FabPreview.cpp assets/app_icon.rc)
 add_custom_command(TARGET QubyMegascanImporter POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_FILE_DIR:QubyMegascanImporter>/blender"
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
@@ -28,7 +28,8 @@ add_custom_command(TARGET QubyMegascanImporter POST_BUILD
         "${CMAKE_CURRENT_SOURCE_DIR}/blender/preview.py"
         "$<TARGET_FILE_DIR:QubyMegascanImporter>/blender")
 target_compile_definitions(QubyMegascanImporter PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
-target_include_directories(QubyMegascanImporter PRIVATE "${WEBVIEW2_NATIVE}/include")
+target_include_directories(QubyMegascanImporter PRIVATE "${WEBVIEW2_NATIVE}/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/assets")
 target_link_libraries(QubyMegascanImporter PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::Widgets Qt6::Network
     "${WEBVIEW2_NATIVE}/x64/WebView2LoaderStatic.lib" ole32 version)
 set_source_files_properties(qml/Main.qml PROPERTIES QT_RESOURCE_ALIAS Main.qml)
